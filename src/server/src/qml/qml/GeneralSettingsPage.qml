@@ -56,6 +56,21 @@ Flickable {
         }
 
         SettingsRow {
+            label: "UI scale"
+            description: "Uniform zoom for the whole interface. Takes effect after restarting Vicinae. The window is always kept within the screen. Clamped to [0.5;3.0]."
+            FormTextInput {
+                width: parent.width
+                text: root.model.uiScale
+                placeholder: "e.g. 1.0"
+                onAccepted: root.model.uiScale = text
+                onEditingChanged: {
+                    if (!editing)
+                        root.model.uiScale = text;
+                }
+            }
+        }
+
+        SettingsRow {
             visible: settings.globalShortcutsSupported
             label: "Launcher hotkey"
             description: "Global shortcut to toggle the Vicinae launcher."

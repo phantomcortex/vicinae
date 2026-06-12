@@ -132,10 +132,18 @@
 
 		// The vicinae UI is designed to work best at the default size. If you change this it is highly recommended
 		// that you preserve a similar aspect ratio.
+		// Regardless of this value, the window is always kept within the current screen (never more than
+		// 90% of it) and above a usable minimum, so it stays a centered popup rather than going fullscreen.
 		"size": {
 			"width": 770,
 			"height": 480
 		},
+
+		// Uniform zoom for the whole interface: scales the window, fonts and all UI metrics together.
+		// Implemented via Qt's global scale factor, so a change only takes effect after restarting Vicinae.
+		// 1.0 = no scaling. Clamped to [0.5;3.0]. A user-set QT_SCALE_FACTOR environment variable wins.
+		// Use "font.scale" above for a text-only adjustment that applies live.
+		"ui_scale": 1.0,
 
 		// EXPERIMENTAL - X11 ONLY!
 		// The name of the screen (as provided by a tool like xrandr) on which the vicinae window

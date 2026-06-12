@@ -16,8 +16,17 @@ Window {
     signal aboutToShow
     signal shown
 
-    readonly property int _w: launcher.overrideWidth || Config.windowWidth
-    readonly property int _h: launcher.overrideHeight || Config.windowHeight
+    // Keep the launcher a centered popup: never larger than a fraction of the current screen
+    // (so it can't overflow on small screens or high UI scale factors), never below a usable floor.
+    // The upper bound wins when the two conflict. Screen.* is in logical pixels, so it already
+    // reflects the active QT_SCALE_FACTOR / display scaling.
+    readonly property real _maxScreenFraction: 0.65
+    readonly property int _minW: 360
+    readonly property int _minH: 240
+    readonly property int _desiredW: launcher.overrideWidth || Config.windowWidth
+    readonly property int _desiredH: launcher.overrideHeight || Config.windowHeight
+    readonly property int _w: Math.round(Math.min(Screen.desktopAvailableWidth * _maxScreenFraction, Math.max(_minW, _desiredW)))
+    readonly property int _h: Math.round(Math.min(Screen.desktopAvailableHeight * _maxScreenFraction, Math.max(_minH, _desiredH)))
     readonly property int _contentH: launcher.compacted ? 60 + 2 * Config.borderWidth : _h
 
     width: _w + 2 * shadowPadding

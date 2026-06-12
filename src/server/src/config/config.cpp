@@ -62,6 +62,21 @@ template <typename T> T static merge(const auto &v1, const auto &v2) {
   return cfg;
 }
 
+float readUiScaleEarly(const std::filesystem::path &path) {
+  std::error_code ec;
+  if (!std::filesystem::exists(path, ec)) return 1.0f;
+
+  Partial<ConfigValue> partial;
+  std::string buf;
+  if (glz::read_file_jsonc<glz::opts{.error_on_unknown_keys = false}>(partial, path.c_str(), buf)) {
+    return 1.0f;
+  }
+  if (partial.launcherWindow && partial.launcherWindow->uiScale) {
+    return clampScale(*partial.launcherWindow->uiScale);
+  }
+  return 1.0f;
+}
+
 const SystemThemeConfig &ConfigValue::systemTheme() const {
   switch (QGuiApplication::styleHints()->colorScheme()) {
   case Qt::ColorScheme::Light:

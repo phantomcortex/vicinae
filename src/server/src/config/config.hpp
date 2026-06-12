@@ -1,4 +1,5 @@
 #pragma once
+#include <algorithm>
 #include <expected>
 #include <filesystem>
 #include "common/entrypoint.hpp"
@@ -109,10 +110,25 @@ template <> struct Partial<WindowCompactMode> {
   std::optional<bool> enabled;
 };
 
+// Scaling factors are clamped to these ranges to keep the UI usable even with extreme config values
+// (e.g. a misplaced "ui_scale": 50). The window-size clamp against the screen is a separate guard.
+inline constexpr float SCALE_MIN = 0.5f;
+inline constexpr float SCALE_MAX = 3.0f;
+inline float clampScale(float scale) { return std::clamp(scale, SCALE_MIN, SCALE_MAX); }
+
+// Reads only the ui_scale value from a config file, early enough to be applied as a global Qt scale
+// factor (which must be set via the environment before QGuiApplication is constructed). Returns the
+// clamped value, or 1.0 when the file is missing/unreadable or the key is absent. Defined in the
+// config translation unit so the glaze key transforms are in scope.
+float readUiScaleEarly(const std::filesystem::path &path);
+
 struct WindowConfig {
   float opacity;
   WindowCSD clientSideDecorations;
   Size size;
+  // Uniform UI zoom applied to the whole interface (window, fonts, metrics) through Qt's scale
+  // factor. Applied at startup, so changing it requires a restart. Clamped to a sane range on read.
+  float uiScale = 1.0;
   std::string screen;
   BlurConfig blur;
   WindowCompactMode compactMode;
@@ -124,6 +140,7 @@ template <> struct Partial<WindowConfig> {
   std::optional<float> opacity;
   std::optional<Partial<WindowCSD>> clientSideDecorations;
   std::optional<Partial<Size>> size;
+  std::optional<float> uiScale;
   std::optional<Partial<BlurConfig>> blur;
   std::optional<Partial<WindowCompactMode>> compactMode;
   std::optional<Partial<LayerShellConfig>> layerShell;

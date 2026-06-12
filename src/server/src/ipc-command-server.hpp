@@ -44,6 +44,14 @@ public:
   IpcCommandServer(ApplicationContext *ctx, QObject *parent = nullptr);
   bool start(const std::filesystem::path &localPath);
 
+  // Stop listening and release the socket. Used before re-execing so the replacement process can
+  // bind the same path (and so the single-instance probe doesn't connect to our own stale socket).
+  void stop() {
+    const QString name = m_server.fullServerName();
+    m_server.close();
+    if (!name.isEmpty()) QLocalServer::removeServer(name);
+  }
+
 private:
   void processFrame(QLocalSocket *conn, QByteArrayView frame);
   void handleRead(QLocalSocket *conn);
