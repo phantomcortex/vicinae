@@ -105,6 +105,12 @@ void GeneralSettingsModel::setUiScale(const QString &v) {
     cfgManager().mergeWithUser({.launcherWindow = config::Partial<config::WindowConfig>{.uiScale = val}});
 }
 
+bool GeneralSettingsModel::dynamicScaleBounds() const { return cfg().launcherWindow.dynamicScaleBounds; }
+void GeneralSettingsModel::setDynamicScaleBounds(bool v) {
+  cfgManager().mergeWithUser(
+      {.launcherWindow = config::Partial<config::WindowConfig>{.dynamicScaleBounds = v}});
+}
+
 static QVariantMap makeDropdownItem(const QString &id, const QString &displayName,
                                     const QString &iconSource = {}) {
   QVariantMap m;

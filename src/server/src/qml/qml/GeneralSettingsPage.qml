@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Window
 import QtQuick.Controls
 import QtQuick.Layouts
 
@@ -56,17 +57,36 @@ Flickable {
         }
 
         SettingsRow {
+            id: uiScaleRow
             label: "UI scale"
-            description: "Uniform zoom for the whole interface. Takes effect after restarting Vicinae. The window is always kept within the screen. Clamped to [0.5;3.0]."
+            // Bounds for the screen this settings window is on. Re-evaluates if it moves to another
+            // monitor. Returns the static [0.8;2.5] range when dynamic bounds are disabled.
+            readonly property var scaleBounds: Config.scaleBoundsForScreen(Screen.desktopAvailableWidth, Screen.desktopAvailableHeight)
+            function clampToScreen(raw) {
+                const v = parseFloat(raw);
+                if (isNaN(v))
+                    return root.model.uiScale;
+                return Math.max(scaleBounds[0], Math.min(scaleBounds[1], v)).toFixed(2);
+            }
+            description: "Uniform zoom for the whole interface. Takes effect after restarting Vicinae. The window is always kept within the screen. On this screen: " + scaleBounds[0].toFixed(1) + "–" + scaleBounds[1].toFixed(1) + "."
             FormTextInput {
                 width: parent.width
                 text: root.model.uiScale
                 placeholder: "e.g. 1.0"
-                onAccepted: root.model.uiScale = text
+                onAccepted: root.model.uiScale = uiScaleRow.clampToScreen(text)
                 onEditingChanged: {
                     if (!editing)
-                        root.model.uiScale = text;
+                        root.model.uiScale = uiScaleRow.clampToScreen(text);
                 }
+            }
+        }
+
+        SettingsRow {
+            label: "Dynamic scale bounds"
+            description: "Narrow the UI scale range to fit the current screen and desktop scaling. When off, the full [0.8;2.5] range is allowed."
+            SettingsToggle {
+                checked: root.model.dynamicScaleBounds
+                onToggled: root.model.dynamicScaleBounds = checked
             }
         }
 

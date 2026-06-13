@@ -25,6 +25,7 @@ class GeneralSettingsModel : public QObject {
       bool nativeTextRendering READ nativeTextRendering WRITE setNativeTextRendering NOTIFY configChanged)
   Q_PROPERTY(QString fontSize READ fontSize WRITE setFontSize NOTIFY configChanged)
   Q_PROPERTY(QString uiScale READ uiScale WRITE setUiScale NOTIFY configChanged)
+  Q_PROPERTY(bool dynamicScaleBounds READ dynamicScaleBounds WRITE setDynamicScaleBounds NOTIFY configChanged)
   Q_PROPERTY(QVariantList themeItems READ themeItems NOTIFY configChanged)
   Q_PROPERTY(QVariantList fontItems READ fontItems NOTIFY configChanged)
   Q_PROPERTY(QVariantList iconThemeItems READ iconThemeItems NOTIFY configChanged)
@@ -71,6 +72,8 @@ public:
   void setFontSize(const QString &v);
   QString uiScale() const;
   void setUiScale(const QString &v);
+  bool dynamicScaleBounds() const;
+  void setDynamicScaleBounds(bool v);
 
   QVariantList themeItems() const;
   QVariantList fontItems() const;
