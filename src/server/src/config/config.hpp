@@ -112,9 +112,42 @@ template <> struct Partial<WindowCompactMode> {
 
 // Scaling factors are clamped to these ranges to keep the UI usable even with extreme config values
 // (e.g. a misplaced "ui_scale": 50). The window-size clamp against the screen is a separate guard.
-inline constexpr float SCALE_MIN = 0.5f;
-inline constexpr float SCALE_MAX = 3.0f;
+inline constexpr float SCALE_MIN = 0.8f;
+inline constexpr float SCALE_MAX = 2.5f;
 inline float clampScale(float scale) { return std::clamp(scale, SCALE_MIN, SCALE_MAX); }
+
+// The launcher window is kept within this fraction band of the current screen's available geometry so
+// it always reads as a centered popup. Shared (through ConfigBridge) by the QML window clamp and by the
+// dynamic ui_scale bounds below, so the size clamp and the offered scale range can never drift apart.
+inline constexpr float WINDOW_MIN_SCREEN_FRACTION = 0.15f;
+inline constexpr float WINDOW_MAX_SCREEN_FRACTION = 0.50f;
+
+struct ScaleBounds {
+  float min;
+  float max;
+};
+
+// Per-screen ui_scale bounds. The static [SCALE_MIN, SCALE_MAX] range is screen-agnostic, so 2.5 is
+// sane on a 4K@100% display but absurd on 720p or 4K@200% (the window slams into the size clamp while
+// text keeps growing). This narrows the range to the values that keep the window inside the fraction
+// band above. logicalScreen{W,H} are logical px as Qt/QML report them (devicePixelRatio-adjusted);
+// appliedUiScale is the QT_SCALE_FACTOR currently in effect; base{W,H} is the window's configured
+// logical size at scale 1. The identity `logicalScreen * appliedUiScale == physicalPx / desktopScale`
+// lets us work without querying the physical resolution or desktop scale separately. See
+// claude_objective.md for the full derivation.
+inline ScaleBounds computeDynamicScaleBounds(double logicalScreenW, double logicalScreenH,
+                                             double appliedUiScale, double baseW, double baseH) {
+  const double screen1W = logicalScreenW * appliedUiScale;
+  const double screen1H = logicalScreenH * appliedUiScale;
+  const double maxW = WINDOW_MAX_SCREEN_FRACTION * screen1W / baseW;
+  const double maxH = WINDOW_MAX_SCREEN_FRACTION * screen1H / baseH;
+  const double minW = WINDOW_MIN_SCREEN_FRACTION * screen1W / baseW;
+  const double minH = WINDOW_MIN_SCREEN_FRACTION * screen1H / baseH;
+  double effMax = std::min({static_cast<double>(SCALE_MAX), maxW, maxH});
+  double effMin = std::max({static_cast<double>(SCALE_MIN), minW, minH});
+  if (effMax < effMin) effMax = effMin; // never offer an empty range
+  return {static_cast<float>(effMin), static_cast<float>(effMax)};
+}
 
 // Reads only the ui_scale value from a config file, early enough to be applied as a global Qt scale
 // factor (which must be set via the environment before QGuiApplication is constructed). Returns the
@@ -129,6 +162,10 @@ struct WindowConfig {
   // Uniform UI zoom applied to the whole interface (window, fonts, metrics) through Qt's scale
   // factor. Applied at startup, so changing it requires a restart. Clamped to a sane range on read.
   float uiScale = 1.0;
+  // When true (default), the offered ui_scale range is narrowed per-screen so it stays sensible across
+  // resolutions and desktop scaling (see config::computeDynamicScaleBounds). When false, only the
+  // static [SCALE_MIN, SCALE_MAX] clamp applies.
+  bool dynamicScaleBounds = true;
   std::string screen;
   BlurConfig blur;
   WindowCompactMode compactMode;
@@ -141,6 +178,7 @@ template <> struct Partial<WindowConfig> {
   std::optional<Partial<WindowCSD>> clientSideDecorations;
   std::optional<Partial<Size>> size;
   std::optional<float> uiScale;
+  std::optional<bool> dynamicScaleBounds;
   std::optional<Partial<BlurConfig>> blur;
   std::optional<Partial<WindowCompactMode>> compactMode;
   std::optional<Partial<LayerShellConfig>> layerShell;
