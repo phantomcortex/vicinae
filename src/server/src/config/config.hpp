@@ -132,9 +132,15 @@ struct ScaleBounds {
 // text keeps growing). This narrows the range to the values that keep the window inside the fraction
 // band above. logicalScreen{W,H} are logical px as Qt/QML report them (devicePixelRatio-adjusted);
 // appliedUiScale is the QT_SCALE_FACTOR currently in effect; base{W,H} is the window's configured
-// logical size at scale 1. The identity `logicalScreen * appliedUiScale == physicalPx / desktopScale`
-// lets us work without querying the physical resolution or desktop scale separately. See
-// claude_objective.md for the full derivation.
+// logical size at scale 1.
+//
+// Derivation: with QT_SCALE_FACTOR == appliedUiScale, Qt's devicePixelRatio is
+// desktopScale * appliedUiScale and availableGeometry is logical px == physicalPx / dpr. A window
+// baseW logical px wide occupies baseW * dpr physical px, i.e. a screen fraction of
+// baseW * desktopScale * s / physicalPx at scale s. Requiring that fraction <= maxFraction and using
+// the identity physicalPx / desktopScale == logicalScreen * appliedUiScale removes the unknown
+// physical resolution and desktop scale, leaving the bounds below in terms of values Qt reports
+// directly.
 inline ScaleBounds computeDynamicScaleBounds(double logicalScreenW, double logicalScreenH,
                                              double appliedUiScale, double baseW, double baseH) {
   const double screen1W = logicalScreenW * appliedUiScale;
