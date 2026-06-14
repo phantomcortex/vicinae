@@ -133,7 +133,7 @@
 		// The vicinae UI is designed to work best at the default size. If you change this it is highly recommended
 		// that you preserve a similar aspect ratio.
 		// Regardless of this value, the window is always kept within the current screen (never more than
-		// 90% of it) and above a usable minimum, so it stays a centered popup rather than going fullscreen.
+		// half of it) and above a usable minimum, so it stays a centered popup rather than going fullscreen.
 		"size": {
 			"width": 770,
 			"height": 480

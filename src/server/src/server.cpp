@@ -135,6 +135,9 @@ int startServer(const ServerLaunchOptions &launchOpts) {
   if (!qEnvironmentVariableIsSet("QT_MAC_SET_RAISE_PROCESS")) qputenv("QT_MAC_SET_RAISE_PROCESS", "0");
 #endif
 
+  const auto m_config = launchOpts.config.empty() ? Omnicast::configDir() / "settings.json"
+                                                  : std::filesystem::path{launchOpts.config};
+
   // Apply the configured UI zoom as a global Qt scale factor. This has to happen before
   // QGuiApplication is constructed, and we never override a user-provided QT_SCALE_FACTOR.
   // Because the scale factor is fixed for the process lifetime, changing ui_scale later requires
@@ -143,9 +146,7 @@ int startServer(const ServerLaunchOptions &launchOpts) {
   const bool weControlScale = !qEnvironmentVariableIsSet("QT_SCALE_FACTOR");
   float appliedUiScale = 1.0f;
   if (weControlScale) {
-    const auto configPath = launchOpts.config.empty() ? Omnicast::configDir() / "settings.json"
-                                                      : std::filesystem::path{launchOpts.config};
-    appliedUiScale = config::readUiScaleEarly(configPath);
+    appliedUiScale = config::readUiScaleEarly(m_config);
     if (appliedUiScale != 1.0f) {
       qputenv("QT_SCALE_FACTOR", QByteArray::number(appliedUiScale));
       qInfo() << "Applying UI scale factor" << appliedUiScale;
@@ -161,9 +162,6 @@ int startServer(const ServerLaunchOptions &launchOpts) {
 #ifdef Q_OS_MACOS
   macosSetAccessoryActivationPolicy();
 #endif
-
-  auto m_config = launchOpts.config.empty() ? Omnicast::configDir() / "settings.json"
-                                            : std::filesystem::path{launchOpts.config};
 
   if (const auto launcher = Environment::detectAppLauncher()) {
     qInfo() << "Detected launch prefix:" << *launcher;
