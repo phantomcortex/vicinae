@@ -142,6 +142,20 @@ void GeneralSettingsModel::setFontSize(const QString &v) {
   if (ok) cfgManager().mergeWithUser({.font = config::Partial<config::FontConfig>{.normal{.size = val}}});
 }
 
+QString GeneralSettingsModel::uiScale() const { return QString::number(cfg().launcherWindow.uiScale); }
+void GeneralSettingsModel::setUiScale(const QString &v) {
+  bool ok = false;
+  float val = v.toFloat(&ok);
+  if (ok)
+    cfgManager().mergeWithUser({.launcherWindow = config::Partial<config::WindowConfig>{.uiScale = val}});
+}
+
+bool GeneralSettingsModel::dynamicScaleBounds() const { return cfg().launcherWindow.dynamicScaleBounds; }
+void GeneralSettingsModel::setDynamicScaleBounds(bool v) {
+  cfgManager().mergeWithUser(
+      {.launcherWindow = config::Partial<config::WindowConfig>{.dynamicScaleBounds = v}});
+}
+
 static QVariantMap makeDropdownItem(const QString &id, const QString &displayName,
                                     const QString &iconSource = {}) {
   QVariantMap m;

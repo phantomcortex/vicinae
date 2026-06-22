@@ -16,8 +16,17 @@ Window {
     signal aboutToShow
     signal shown
 
-    readonly property int _w: launcher.overrideWidth || Config.windowWidth
-    readonly property int _h: launcher.overrideHeight || Config.windowHeight
+    // Keep the launcher a centered popup, sized relative to the current screen so it scales sanely
+    // with ui_scale: never more than the max fraction of the screen, never less than the min fraction.
+    // The upper bound wins when the two conflict. Screen.* is in logical pixels, so it already reflects
+    // the active QT_SCALE_FACTOR / display scaling (the window's own size is in the same units). The
+    // fractions come from Config so this clamp and the dynamic ui_scale bounds share one definition.
+    readonly property real _maxScreenFraction: Config.maxScreenFraction
+    readonly property real _minScreenFraction: Config.minScreenFraction
+    readonly property int _desiredW: launcher.overrideWidth || Config.windowWidth
+    readonly property int _desiredH: launcher.overrideHeight || Config.windowHeight
+    readonly property int _w: Math.round(Math.min(Screen.desktopAvailableWidth * _maxScreenFraction, Math.max(Screen.desktopAvailableWidth * _minScreenFraction, _desiredW)))
+    readonly property int _h: Math.round(Math.min(Screen.desktopAvailableHeight * _maxScreenFraction, Math.max(Screen.desktopAvailableHeight * _minScreenFraction, _desiredH)))
     readonly property int _contentH: launcher.compacted ? 60 + 2 * Config.borderWidth : _h
 
     width: _w + 2 * shadowPadding

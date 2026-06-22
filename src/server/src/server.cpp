@@ -70,7 +70,13 @@
 #include "utils.hpp"
 #include "vicinae.hpp"
 #include "generated/version.h"
+#include "common/common.hpp"
+#include <algorithm>
+#include <cstring>
 #include <filesystem>
+#include <unistd.h>
+#include <QFont>
+#include <QFontMetricsF>
 #include <QGuiApplication>
 #include <QPointer>
 #include <QQuickWindow>
@@ -90,6 +96,26 @@ static void applyTextRenderingMode(const config::FontConfig &fontConfig) {
   } else {
     QQuickWindow::setTextRenderType(QQuickWindow::NativeTextRendering);
   }
+}
+
+// Different font families render at different visual sizes for the same point size because their cap
+// heights differ. To keep the UI proportions stable when the user picks a different font, we scale
+// the active font's point size by the ratio of the reference (bundled) font's cap height to the
+// active font's cap height. The factor is bounded so a pathological font can't blow up the layout.
+static double fontNormalizationFactor(const QString &referenceFamily, const QFont &activeFont,
+                                      double baseSize) {
+  if (referenceFamily.isEmpty() || baseSize <= 0.0) return 1.0;
+
+  QFont reference(referenceFamily);
+  reference.setPointSizeF(baseSize);
+  QFont active = activeFont;
+  active.setPointSizeF(baseSize);
+
+  const double referenceCap = QFontMetricsF(reference).capHeight();
+  const double activeCap = QFontMetricsF(active).capHeight();
+  if (referenceCap <= 0.0 || activeCap <= 0.0) return 1.0;
+
+  return std::clamp(referenceCap / activeCap, 0.7, 1.4);
 }
 
 int startServer(const ServerLaunchOptions &launchOpts) {
@@ -115,6 +141,24 @@ int startServer(const ServerLaunchOptions &launchOpts) {
   if (!qEnvironmentVariableIsSet("QT_MAC_SET_RAISE_PROCESS")) qputenv("QT_MAC_SET_RAISE_PROCESS", "0");
 #endif
 
+  const auto m_config = launchOpts.config.empty() ? Omnicast::configDir() / "settings.json"
+                                                  : std::filesystem::path{launchOpts.config};
+
+  // Apply the configured UI zoom as a global Qt scale factor. This has to happen before
+  // QGuiApplication is constructed, and we never override a user-provided QT_SCALE_FACTOR.
+  // Because the scale factor is fixed for the process lifetime, changing ui_scale later requires
+  // re-execing (see the window-visibility hook further down). weControlScale gates that: when the
+  // user manages QT_SCALE_FACTOR themselves, ui_scale has no effect and we must not restart.
+  const bool weControlScale = !qEnvironmentVariableIsSet("QT_SCALE_FACTOR");
+  float appliedUiScale = 1.0f;
+  if (weControlScale) {
+    appliedUiScale = config::readUiScaleEarly(m_config);
+    if (appliedUiScale != 1.0f) {
+      qputenv("QT_SCALE_FACTOR", QByteArray::number(appliedUiScale));
+      qInfo() << "Applying UI scale factor" << appliedUiScale;
+    }
+  }
+
   int argc = 1;
   static char *argv[] = {strdup("command"), nullptr};
   QGuiApplication const qapp(argc, argv);
@@ -128,9 +172,6 @@ int startServer(const ServerLaunchOptions &launchOpts) {
 #ifdef Q_OS_MACOS
   macosSetAccessoryActivationPolicy();
 #endif
-
-  auto m_config = launchOpts.config.empty() ? Omnicast::configDir() / "settings.json"
-                                            : std::filesystem::path{launchOpts.config};
 
   if (const auto launcher = Environment::detectAppLauncher()) {
     qInfo() << "Detected launch prefix:" << *launcher;
@@ -334,29 +375,73 @@ int startServer(const ServerLaunchOptions &launchOpts) {
   ExtensionIntervalScheduler intervalScheduler(ctx);
   intervalScheduler.rebuild();
 
+  // ui_scale is fixed for the process lifetime (it drives QT_SCALE_FACTOR, which Qt only reads at
+  // startup). When it changes, mark a restart as pending and re-exec the next time the window is
+  // shown, so the launcher reappears at the new scale instead of requiring a manual restart.
+  bool pendingScaleRestart = false;
+  auto reexecForScale = [&]() {
+    qInfo() << "Restarting to apply the new UI scale";
+    commandServer.stop(); // release the socket so the replacement instance can bind it
+
+    // execv inherits our environment, including the QT_SCALE_FACTOR we set at startup. Clear it so
+    // the replacement re-reads ui_scale from config and re-applies the fresh value.
+    qunsetenv("QT_SCALE_FACTOR");
+
+    ServerLaunchOptions relaunch = launchOpts;
+    relaunch.open = true; // reopen the window the user was trying to show
+
+    std::string opts;
+    if (glz::write_json(relaunch, opts)) { opts = "{}"; }
+
+    const std::filesystem::path self = vicinae::selfPath();
+    char *argv[] = {strdup(self.filename().c_str()), strdup(opts.c_str()), nullptr};
+    execv(self.c_str(), argv);
+    qWarning() << "Failed to re-exec for UI scale change:" << strerror(errno);
+  };
+
+  if (weControlScale) {
+    QObject::connect(ctx.navigation.get(), &NavigationController::windowVisiblityChanged, [&](bool visible) {
+      if (visible && pendingScaleRestart) reexecForScale();
+    });
+  }
+
   auto configChanged = [&](const config::ConfigValue &next, const config::ConfigValue &prev) {
     auto &theme = ThemeService::instance();
     auto &nextTheme = next.systemTheme();
     auto &prevTheme = prev.systemTheme();
     bool const themeChangeRequired = nextTheme.name != prevTheme.name;
 
+    // The running process already baked the startup ui_scale into the Qt scale factor; if it has
+    // changed since, schedule a restart (applied on the next window show, see above).
+    if (weControlScale) {
+      pendingScaleRestart = config::clampScale(next.launcherWindow.uiScale) != appliedUiScale;
+    }
+
     applyTextRenderingMode(next.font);
 
-    theme.setFontBasePointSize(next.font.normal.size);
+    // Resolve the active font, then normalize its point size against the bundled reference font so
+    // any family occupies roughly the same visual size (see fontNormalizationFactor).
+    auto *fontService = ServiceRegistry::instance()->fontService();
+    const QString referenceFamily = fontService ? fontService->builtinFontFamily() : QString();
+
+    QFont font;
+    const auto &family = next.font.normal.family;
+    if (family == "auto") {
+      if (!referenceFamily.isEmpty()) font.setFamily(referenceFamily);
+    } else if (family != "system") {
+      font.setFamily(QString::fromStdString(family));
+    }
+
+    const double baseSize = next.font.normal.size;
+    const double effectiveSize = baseSize * fontNormalizationFactor(referenceFamily, font, baseSize);
+
+    theme.setFontBasePointSize(effectiveSize);
 
     bool const fontChanged =
         next.font.normal.size != prev.font.normal.size || next.font.normal.family != prev.font.normal.family;
 
     if (fontChanged) {
-      auto &family = next.font.normal.family;
-      QFont font;
-      if (family == "auto") {
-        auto builtin = ServiceRegistry::instance()->fontService()->builtinFontFamily();
-        if (!builtin.isEmpty()) font.setFamily(builtin);
-      } else if (family != "system") {
-        font.setFamily(QString::fromStdString(family));
-      }
-      font.setPointSizeF(next.font.normal.size);
+      font.setPointSizeF(effectiveSize);
       QGuiApplication::setFont(font);
     }
 
